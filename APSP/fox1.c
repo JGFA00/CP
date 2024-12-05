@@ -3,8 +3,9 @@
 #include <mpi.h>
 #include <math.h>
 #include <string.h>
+#include <limits.h>
 
-#define INF 99999
+#define INF INT_MAX
 
 void printMatrix(int *matrix, int N) {
     for (int i = 0; i < N; i++) {
@@ -21,7 +22,7 @@ void printMatrix(int *matrix, int N) {
 
 void minPlusMultiply(int *localA, int *localB, int *newSubMatrix, int subMatrixSize, int rank) {
     // Essential print to show the process involved in multiplication
-    //printf("Process %d performing min-plus multiplication\n", rank);
+    printf("Process %d performing min-plus multiplication\n", rank);
 
     for (int i = 0; i < subMatrixSize; i++) {
         for (int j = 0; j < subMatrixSize; j++) {
@@ -38,7 +39,7 @@ void minPlusMultiply(int *localA, int *localB, int *newSubMatrix, int subMatrixS
     }
     // Print the result of the multiplication for debugging purposes
     //printf("Process %d after min-plus multiplication, newSubMatrix:\n", rank);
-    //printMatrix(newSubMatrix, subMatrixSize);
+    printMatrix(newSubMatrix, subMatrixSize);
 }
 
 void initializeMatrix(int *matrix, int N) {
@@ -98,8 +99,6 @@ int main(int argc, char **argv) {
             }
         }
         fclose(inputFile);
-        //printf("Initial Graph Matrix:\n");
-        //printMatrix(graph, graphInfo.N);
     }
     MPI_Bcast(&graphInfo, sizeof(GraphInfo), MPI_BYTE, 0, MPI_COMM_WORLD);
 
@@ -127,8 +126,6 @@ int main(int argc, char **argv) {
 
     // Using MPI_Scatterv to handle non-contiguous sub-blocks of the matrix
     MPI_Scatterv(graph, sendcounts, displs, blockType, subMatrix, graphInfo.subMatrixSize * graphInfo.subMatrixSize, MPI_INT, 0, MPI_COMM_WORLD);
-    //printf("Process %d received subMatrix:\n", rank);
-    //printMatrix(subMatrix, graphInfo.subMatrixSize);
 
     // Set up the grid communicators using MPI_Cart_create
     MPI_Comm gridComm, rowComm, colComm;
@@ -154,41 +151,44 @@ int main(int argc, char **argv) {
     int source = (myRow + 1) % Q;
     int dest = (myRow + Q - 1) % Q;
     MPI_Status status;
-    for (int step = 0; step < graphInfo.subMatrixSize; step++) {
-        
-        int bcastRoot = step % Q;
 
-        if (myCol == bcastRoot) {
-            // Broadcast the entire localB block to the entire row
-            //printf("Step %d: Process %d (bcastRoot) broadcasting matrix:\n", step, rank);
-            //printMatrix(localB, graphInfo.subMatrixSize);
-            MPI_Bcast(localB, graphInfo.subMatrixSize * graphInfo.subMatrixSize, MPI_INT, bcastRoot, rowComm);
-            
-            // Copy localB to localA to use for multiplication
-            memcpy(localA, localB, graphInfo.subMatrixSize * graphInfo.subMatrixSize * sizeof(int));
-            minPlusMultiply(localA, localB, newSubMatrix, graphInfo.subMatrixSize, rank);
-            
-            for (int i = 0; i < graphInfo.subMatrixSize; i++) {
-                for (int j = 0; j < graphInfo.subMatrixSize; j++) {
-                    if (newSubMatrix[i * graphInfo.subMatrixSize + j] < subMatrix[i * graphInfo.subMatrixSize + j]) {
-                        subMatrix[i * graphInfo.subMatrixSize + j] = newSubMatrix[i * graphInfo.subMatrixSize + j];
-                    }
-                }
-            }
-        } else {
-            // Receive broadcasted block data into localA
-            MPI_Bcast(localA, graphInfo.subMatrixSize * graphInfo.subMatrixSize, MPI_INT, bcastRoot, rowComm);
-            //printf("Step %d: Process %d received broadcasted matrix:\n", step, rank);
-            //printMatrix(localA, graphInfo.subMatrixSize);
-            minPlusMultiply(localA, localB, newSubMatrix, graphInfo.subMatrixSize, rank);
+    int count=0;
+    for(int j=1;j<=graphInfo.N-1;j=j*2){
+        for (int i = 0; i < graphInfo.subMatrixSize * graphInfo.subMatrixSize; i++) {
+            newSubMatrix[i] = INF;
         }
-        
 
-        MPI_Sendrecv_replace(localB, graphInfo.subMatrixSize * graphInfo.subMatrixSize, MPI_INT, dest, step, source, step, colComm, &status);
+        // Synchronize all processes before starting the next outer iteration
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        for (int step = 0; step < graphInfo.subMatrixSize; step++) {
+            int bcastRoot = step % Q;
+
+            if (myCol == bcastRoot) {
+                MPI_Bcast(localB, graphInfo.subMatrixSize * graphInfo.subMatrixSize, MPI_INT, bcastRoot, rowComm);
+                // Synchronize after broadcasting to make sure all rows are updated
+                MPI_Barrier(MPI_COMM_WORLD);
+                memcpy(localA, localB, graphInfo.subMatrixSize * graphInfo.subMatrixSize * sizeof(int));
+                minPlusMultiply(localA, localB, newSubMatrix, graphInfo.subMatrixSize, rank);
+            } else {
+                MPI_Bcast(localA, graphInfo.subMatrixSize * graphInfo.subMatrixSize, MPI_INT, bcastRoot, rowComm);
+                // Synchronize after broadcasting to make sure all rows are updated
+                MPI_Barrier(MPI_COMM_WORLD);
+                minPlusMultiply(localA, localB, newSubMatrix, graphInfo.subMatrixSize, rank);
+            }
+            MPI_Sendrecv_replace(localB, graphInfo.subMatrixSize * graphInfo.subMatrixSize, MPI_INT, dest, 0, source, 0, colComm, &status);
+        }
+
+        // Synchronize after updating the localB to make sure all are aligned
+        MPI_Barrier(MPI_COMM_WORLD);
+
+        memcpy(localB, newSubMatrix, graphInfo.subMatrixSize * graphInfo.subMatrixSize * sizeof(int));       
+        printf("count:%d\n",count);
+        count++;
     }
 
     // Gather the sub-matrices to the root process
-    MPI_Gatherv(subMatrix, graphInfo.subMatrixSize * graphInfo.subMatrixSize, MPI_INT, graph, sendcounts, displs, blockType, 0, MPI_COMM_WORLD);
+    MPI_Gatherv(newSubMatrix, graphInfo.subMatrixSize * graphInfo.subMatrixSize, MPI_INT, graph, sendcounts, displs, blockType, 0, MPI_COMM_WORLD);
 
     // Print the final result
     if (rank == 0) {
@@ -207,7 +207,7 @@ int main(int argc, char **argv) {
     }
     free(subMatrix);
     free(localA);
-    
+
     MPI_Finalize();
     return 0;
 }
