@@ -89,6 +89,58 @@ void print_ecosystem() {
     printf("\n");
 }
 
+void print_final_state() {
+    printf("%d %d %d %d %d %d %d\n", GEN_PROC_RABBITS, GEN_PROC_FOXES, GEN_FOOD_FOXES, 0, R, C, num_objects);
+
+    // Print rocks first
+    for (int i = 0; i < num_objects; i++) {
+        if (objects[i].type == 'X') {
+            printf("ROCK %d %d\n", objects[i].x, objects[i].y);
+        }
+    }
+
+    // Print rabbits next
+    for (int i = 0; i < num_objects; i++) {
+        if (objects[i].type == 'R') {
+            printf("RABBIT %d %d\n", objects[i].x, objects[i].y);
+        }
+    }
+
+    // Print foxes last
+    for (int i = 0; i < num_objects; i++) {
+        if (objects[i].type == 'F') {
+            printf("FOX %d %d\n", objects[i].x, objects[i].y);
+        }
+    }
+}
+
+void print_ecosystem_compact() {
+    printf("----------------------\n");
+    for (int i = 0; i < R; i++) {
+        for (int j = 0; j < C; j++) {
+            printf("+------+");
+        }
+        printf("\n");
+        for (int j = 0; j < C; j++) {
+            printf("|");
+            if (ecosystem[i][j][0] == '.') {
+                printf("      ");
+            } else if (ecosystem[i][j][0] == 'X') {
+                printf(" *    ");
+            } else if (ecosystem[i][j][0] == 'R' || ecosystem[i][j][0] == 'F') {
+                int id;
+                sscanf(ecosystem[i][j] + 1, "%d", &id);
+                printf(" %c%-3d ", ecosystem[i][j][0], id);
+            }
+        }
+        printf("|\n");
+    }
+    for (int j = 0; j < C; j++) {
+        printf("+------+");
+    }
+    printf("\n----------------------\n");
+}
+
 void collect_moves() {
     memset(intended_moves, 0, sizeof(intended_moves));
     int directions[4][2] = {{-1, 0}, {0, 1}, {1, 0}, {0, -1}}; // N, E, S, W
@@ -162,11 +214,10 @@ void collect_moves() {
 }
 
 void resolve_conflicts() {
-    // A 2D array to keep track of which object, if any, will occupy each cell
     int chosen_objects[MAX_ROWS][MAX_COLS];
     for (int i = 0; i < R; i++) {
         for (int j = 0; j < C; j++) {
-            chosen_objects[i][j] = -1; // -1 means the cell is not yet assigned
+            chosen_objects[i][j] = -1;
         }
     }
 
@@ -223,23 +274,38 @@ void apply_moves() {
             int new_x = intended_moves[i].new_x;
             int new_y = intended_moves[i].new_y;
 
-            object_index[old_x][old_y] = -1;
-            object_index[new_x][new_y] = i;
+            // Procreation for Rabbits
+            if (obj->type == 'R') {
+                obj->age++;
+                if (obj->age >= GEN_PROC_RABBITS) {
+                    obj->age = 0;
+                    printf("\n%c%d procreated\n",obj->type,obj->id);
+                    objects[num_objects] = (Object){'R', num_objects, old_x, old_y, 0, 0};
+                    snprintf(temp_ecosystem[old_x][old_y], MAX_STR_SIZE, "R%d", num_objects);
+                    num_objects++;
+                }
+            }
 
+            // Procreation for Foxes
+            if (obj->type == 'F') {
+                obj->age++;
+                if (obj->age >= GEN_PROC_FOXES) {
+                    obj->age = 0;
+                    objects[num_objects] = (Object){'F', num_objects, old_x, old_y, 0, 0};
+                    snprintf(temp_ecosystem[old_x][old_y], MAX_STR_SIZE, "F%d", num_objects);
+                    num_objects++;
+                }
+            }
+
+            // Move the object
             snprintf(temp_ecosystem[new_x][new_y], MAX_STR_SIZE, "%c%d", obj->type, obj->id);
             snprintf(temp_ecosystem[old_x][old_y], MAX_STR_SIZE, ".");
 
             obj->x = new_x;
             obj->y = new_y;
 
-            if (obj->type == 'R') {
-                obj->age++;
-                if (obj->age >= GEN_PROC_RABBITS) {
-                    obj->age = 0;
-                }
-            } else if (obj->type == 'F') {
+            if (obj->type == 'F') {
                 obj->hunger++;
-                obj->age++;
                 if (ecosystem[new_x][new_y][0] == 'R') {
                     obj->hunger = 0;
                     int rabbit_index = object_index[new_x][new_y];
@@ -250,7 +316,6 @@ void apply_moves() {
                 if (obj->hunger >= GEN_FOOD_FOXES) {
                     obj->type = 'D';
                     snprintf(temp_ecosystem[new_x][new_y], MAX_STR_SIZE, ".");
-                    object_index[new_x][new_y] = -1;
                 }
             }
         }
@@ -274,31 +339,6 @@ void simulate_generation() {
     apply_moves();
 }
 
-void print_final_state() {
-    printf("%d %d %d %d %d %d %d\n", GEN_PROC_RABBITS, GEN_PROC_FOXES, GEN_FOOD_FOXES, 0, R, C, num_objects);
-
-    // Print rocks first
-    for (int i = 0; i < num_objects; i++) {
-        if (objects[i].type == 'X') {
-            printf("ROCK %d %d\n", objects[i].x, objects[i].y);
-        }
-    }
-
-    // Print rabbits next
-    for (int i = 0; i < num_objects; i++) {
-        if (objects[i].type == 'R') {
-            printf("RABBIT %d %d\n", objects[i].x, objects[i].y);
-        }
-    }
-
-    // Print foxes last
-    for (int i = 0; i < num_objects; i++) {
-        if (objects[i].type == 'F') {
-            printf("FOX %d %d\n", objects[i].x, objects[i].y);
-        }
-    }
-}
-
 int main(int argc, char* argv[]) {
     if (argc != 2) {
         fprintf(stderr, "Usage: %s <input_file>\n", argv[0]);
@@ -306,12 +346,12 @@ int main(int argc, char* argv[]) {
     }
 
     read_input(argv[1]);
-    print_ecosystem();
+    print_ecosystem_compact();
 
     for (int gen = 0; gen < N_GEN; gen++) {
         simulate_generation();
         printf("Generation %d:\n", gen + 1);
-        print_ecosystem();
+        print_ecosystem_compact();
     }
 
     // Print the final state in the same format as the input
