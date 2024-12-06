@@ -311,6 +311,7 @@ void apply_moves() {
                     int rabbit_index = object_index[new_x][new_y];
                     if (rabbit_index != -1 && objects[rabbit_index].type == 'R') {
                         objects[rabbit_index].type = 'D';
+                        snprintf(temp_ecosystem[new_x][new_y], MAX_STR_SIZE, ".");
                     }
                 }
                 if (obj->hunger >= GEN_FOOD_FOXES) {
