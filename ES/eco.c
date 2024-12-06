@@ -103,7 +103,7 @@ void move_rabbit(Object* rabbit, char temp_ecosystem[MAX_ROWS][MAX_COLS][MAX_STR
     int new_x = valid_cells[chosen_index][0];
     int new_y = valid_cells[chosen_index][1];
 
-    // Move to the selected cell
+/*     // Move to the selected cell
     snprintf(temp_ecosystem[new_x][new_y], MAX_STR_SIZE, "R%d", rabbit->id);
     temp_ecosystem[x][y][0] = '.'; // Clear old cell
     rabbit->x = new_x;
@@ -117,9 +117,52 @@ void move_rabbit(Object* rabbit, char temp_ecosystem[MAX_ROWS][MAX_COLS][MAX_STR
         objects[num_objects] = (Object){'R', num_objects, x, y, 0, 0};
         snprintf(temp_ecosystem[x][y], MAX_STR_SIZE, "R%d", num_objects);
         num_objects++;
-    }
+    } */
 }
 
+void move_fox(Object* fox, char temp_ecosystem[MAX_ROWS][MAX_COLS][MAX_STR_SIZE]) {
+    int directions[4][2] = {{-1, 0}, {0, 1}, {1, 0}, {0, -1}}; // N, E, S, W
+    int x = fox->x;
+    int y = fox->y;
+
+    // Collect valid adjacent cells
+    int valid_cells_eat[4][2];
+    int valid_cells[4][2];
+    int valid_count_eat = 0;
+    int valid_count =0;
+    for (int i = 0; i < 4; i++) {
+        int new_x = x + directions[i][0];
+        int new_y = y + directions[i][1];
+         if (new_x >= 0 && new_x < R && new_y >= 0 && new_y < C && temp_ecosystem[new_x][new_y][0] == 'R'){
+            valid_cells_eat[valid_count_eat][0] = new_x;
+            valid_cells_eat[valid_count_eat][1] = new_y;
+            valid_count_eat++;
+        }
+         if (new_x >= 0 && new_x < R && new_y >= 0 && new_y < C && temp_ecosystem[new_x][new_y][0] == '.'){
+            valid_cells[valid_count][0] = new_x;
+            valid_cells[valid_count][1] = new_y;
+            valid_count++;
+         }
+    }
+
+    // If there are no valid cells, stay in the same place
+    if (valid_count_eat != 0) {
+        // Choose a cell based on the criteria
+        int chosen_index = (N_GEN + x + y) % valid_count_eat;
+        int new_x = valid_cells_eat[chosen_index][0];
+        int new_y = valid_cells_eat[chosen_index][1];
+    }
+    else if(valid_count!=0){
+         // Choose a cell based on the criteria
+        int chosen_index = (N_GEN + x + y) % valid_count;
+        int new_x = valid_cells[chosen_index][0];
+        int new_y = valid_cells[chosen_index][1];
+    }
+    else{
+        return;
+    }
+    
+}
 
 
 void simulate_generation() {
@@ -134,11 +177,17 @@ void simulate_generation() {
     }
     for(int i=0;i<num_objects;i++){
         // Move foxes
-/*         if (objects[i].type == 'F') {
+        if (objects[i].type == 'F') {
             move_fox(&objects[i], temp_ecosystem);
-        } */
+        }
     }
 
+    //ADD conflict 
+/*         // Move to the selected cell
+    snprintf(temp_ecosystem[new_x][new_y], MAX_STR_SIZE, "F%d", fox->id);
+    temp_ecosystem[x][y][0] = '.'; // Clear old cell
+    fox->x = new_x;
+    fox->y = new_y; */
     memcpy(ecosystem, temp_ecosystem, sizeof(ecosystem));
 }
 
