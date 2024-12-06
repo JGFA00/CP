@@ -1,0 +1,4 @@
+When two or more rabbits move to the same cell and (GEN_PROC_RABBITS) is the same what happens?
+When two or more foxes move to the same cell and (GEN_PROC_FOXES) and (GEN_FOOD_FOXES) is the same what happens?
+When a rabbit procreates the new rabbit should be able to move in the same generation?
+ 
