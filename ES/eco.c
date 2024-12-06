@@ -17,10 +17,17 @@ typedef struct {
     int hunger;
 } Object;
 
+typedef struct {
+    int new_x;
+    int new_y;
+    bool move_requested;
+} Move;
+
 int R, C, N_GEN, GEN_PROC_RABBITS, GEN_PROC_FOXES, GEN_FOOD_FOXES;
 char ecosystem[MAX_ROWS][MAX_COLS][MAX_STR_SIZE]; // Increase size to accommodate larger IDs and rocks
 Object objects[MAX_OBJECTS];
 int num_objects;
+Move intended_moves[MAX_OBJECTS];
 
 void read_input(const char* filename) {
     FILE* file = fopen(filename, "r");
@@ -75,123 +82,188 @@ void print_object(const Object* obj) {
     printf("Hunger: %d\n\n", obj->hunger);
 }
 
-void move_rabbit(Object* rabbit, char temp_ecosystem[MAX_ROWS][MAX_COLS][MAX_STR_SIZE]) {
+void collect_moves() {
+    memset(intended_moves, 0, sizeof(intended_moves));
     int directions[4][2] = {{-1, 0}, {0, 1}, {1, 0}, {0, -1}}; // N, E, S, W
-    int x = rabbit->x;
-    int y = rabbit->y;
 
-    // Collect valid adjacent cells
-    int valid_cells[4][2];
-    int valid_count = 0;
-    for (int i = 0; i < 4; i++) {
-        int new_x = x + directions[i][0];
-        int new_y = y + directions[i][1];
-        if (new_x >= 0 && new_x < R && new_y >= 0 && new_y < C && temp_ecosystem[new_x][new_y][0] == '.') {
-            valid_cells[valid_count][0] = new_x;
-            valid_cells[valid_count][1] = new_y;
-            valid_count++;
+    for (int i = 0; i < num_objects; i++) {
+        Object* obj = &objects[i];
+        int x = obj->x;
+        int y = obj->y;
+
+        if (obj->type == 'R') {
+            // Rabbit movement: Choose a random valid direction
+            int valid_cells[4][2];
+            int valid_count = 0;
+
+            for (int j = 0; j < 4; j++) {
+                int new_x = x + directions[j][0];
+                int new_y = y + directions[j][1];
+                if (new_x >= 0 && new_x < R && new_y >= 0 && new_y < C && ecosystem[new_x][new_y][0] == '.') {
+                    valid_cells[valid_count][0] = new_x;
+                    valid_cells[valid_count][1] = new_y;
+                    valid_count++;
+                }
+            }
+
+            if (valid_count > 0) {
+                int chosen_index = (N_GEN + x + y) % valid_count;
+                intended_moves[i].new_x = valid_cells[chosen_index][0];
+                intended_moves[i].new_y = valid_cells[chosen_index][1];
+                intended_moves[i].move_requested = true;
+            }
+
+        } else if (obj->type == 'F') {
+            // Fox movement: First look for rabbits, then look for empty cells
+            int valid_cells_eat[4][2];
+            int valid_cells[4][2];
+            int valid_count_eat = 0;
+            int valid_count = 0;
+
+            // Collect cells with rabbits
+            for (int j = 0; j < 4; j++) {
+                int new_x = x + directions[j][0];
+                int new_y = y + directions[j][1];
+                if (new_x >= 0 && new_x < R && new_y >= 0 && new_y < C && ecosystem[new_x][new_y][0] == 'R') {
+                    valid_cells_eat[valid_count_eat][0] = new_x;
+                    valid_cells_eat[valid_count_eat][1] = new_y;
+                    valid_count_eat++;
+                } else if (new_x >= 0 && new_x < R && new_y >= 0 && new_y < C && ecosystem[new_x][new_y][0] == '.') {
+                    valid_cells[valid_count][0] = new_x;
+                    valid_cells[valid_count][1] = new_y;
+                    valid_count++;
+                }
+            }
+
+            // Prioritize eating a rabbit if possible
+            if (valid_count_eat > 0) {
+                int chosen_index = (N_GEN + x + y) % valid_count_eat;
+                intended_moves[i].new_x = valid_cells_eat[chosen_index][0];
+                intended_moves[i].new_y = valid_cells_eat[chosen_index][1];
+                intended_moves[i].move_requested = true;
+            } else if (valid_count > 0) {
+                // Move to an empty cell if no rabbit is found
+                int chosen_index = (N_GEN + x + y) % valid_count;
+                intended_moves[i].new_x = valid_cells[chosen_index][0];
+                intended_moves[i].new_y = valid_cells[chosen_index][1];
+                intended_moves[i].move_requested = true;
+            }
+        }
+    }
+}
+
+void resolve_conflicts() {
+    // A 2D array to keep track of which object, if any, will occupy each cell
+    int chosen_objects[MAX_ROWS][MAX_COLS];
+    for (int i = 0; i < R; i++) {
+        for (int j = 0; j < C; j++) {
+            chosen_objects[i][j] = -1; // -1 means the cell is not yet assigned
         }
     }
 
-    // If there are no valid cells, stay in the same place
-    if (valid_count == 0) {
-        return;
-    }
+    for (int i = 0; i < num_objects; i++) {
+        if (intended_moves[i].move_requested) {
+            int new_x = intended_moves[i].new_x;
+            int new_y = intended_moves[i].new_y;
 
-    // Choose a cell based on the criteria
-    int chosen_index = (N_GEN + x + y) % valid_count;
-    int new_x = valid_cells[chosen_index][0];
-    int new_y = valid_cells[chosen_index][1];
+            // Check if the target cell is already occupied by another move
+            if (chosen_objects[new_x][new_y] == -1) {
+                // No conflict yet, assign this object to the cell
+                chosen_objects[new_x][new_y] = i;
+            } else {
+                // Conflict: Compare the current occupant with the new one
+                int current_occupant = chosen_objects[new_x][new_y];
+                Object* current_obj = &objects[current_occupant];
+                Object* new_obj = &objects[i];
 
-/*     // Move to the selected cell
-    snprintf(temp_ecosystem[new_x][new_y], MAX_STR_SIZE, "R%d", rabbit->id);
-    temp_ecosystem[x][y][0] = '.'; // Clear old cell
-    rabbit->x = new_x;
-    rabbit->y = new_y;
-
-    // Procreation check
-    rabbit->age++;
-    if (rabbit->age >= GEN_PROC_RABBITS) {
-        rabbit->age = 0; // Reset age
-        // Leave a new rabbit in the old position
-        objects[num_objects] = (Object){'R', num_objects, x, y, 0, 0};
-        snprintf(temp_ecosystem[x][y], MAX_STR_SIZE, "R%d", num_objects);
-        num_objects++;
-    } */
-}
-
-void move_fox(Object* fox, char temp_ecosystem[MAX_ROWS][MAX_COLS][MAX_STR_SIZE]) {
-    int directions[4][2] = {{-1, 0}, {0, 1}, {1, 0}, {0, -1}}; // N, E, S, W
-    int x = fox->x;
-    int y = fox->y;
-
-    // Collect valid adjacent cells
-    int valid_cells_eat[4][2];
-    int valid_cells[4][2];
-    int valid_count_eat = 0;
-    int valid_count =0;
-    for (int i = 0; i < 4; i++) {
-        int new_x = x + directions[i][0];
-        int new_y = y + directions[i][1];
-         if (new_x >= 0 && new_x < R && new_y >= 0 && new_y < C && temp_ecosystem[new_x][new_y][0] == 'R'){
-            valid_cells_eat[valid_count_eat][0] = new_x;
-            valid_cells_eat[valid_count_eat][1] = new_y;
-            valid_count_eat++;
+                if (new_obj->type == 'R' && current_obj->type == 'R') {
+                    // Both are rabbits, keep the one with the oldest procreation age
+                    if (new_obj->age > current_obj->age) {
+                        chosen_objects[new_x][new_y] = i; // Replace with new rabbit
+                    }
+                    // Otherwise, the current rabbit stays
+                } else if (new_obj->type == 'F' && current_obj->type == 'F') {
+                    // Both are foxes, keep the one with the oldest procreation age
+                    if (new_obj->age > current_obj->age) {
+                        chosen_objects[new_x][new_y] = i; // Replace with new fox
+                    } else if (new_obj->age == current_obj->age) {
+                        // If procreation ages are the same, keep the least hungry one
+                        if (new_obj->hunger < current_obj->hunger) {
+                            chosen_objects[new_x][new_y] = i; // Replace with less hungry fox
+                        }
+                    }
+                    // Otherwise, the current fox stays
+                }
+                // If one is a rabbit and the other a fox, it is assumed they do not conflict,
+                // since foxes prioritize eating rabbits.
+            }
         }
-         if (new_x >= 0 && new_x < R && new_y >= 0 && new_y < C && temp_ecosystem[new_x][new_y][0] == '.'){
-            valid_cells[valid_count][0] = new_x;
-            valid_cells[valid_count][1] = new_y;
-            valid_count++;
-         }
     }
 
-    // If there are no valid cells, stay in the same place
-    if (valid_count_eat != 0) {
-        // Choose a cell based on the criteria
-        int chosen_index = (N_GEN + x + y) % valid_count_eat;
-        int new_x = valid_cells_eat[chosen_index][0];
-        int new_y = valid_cells_eat[chosen_index][1];
+    // Now mark the final chosen moves
+    for (int i = 0; i < num_objects; i++) {
+        if (intended_moves[i].move_requested) {
+            int new_x = intended_moves[i].new_x;
+            int new_y = intended_moves[i].new_y;
+
+            if (chosen_objects[new_x][new_y] != i) {
+                // If this object was not chosen to move to the target cell, cancel the move
+                intended_moves[i].move_requested = false;
+            }
+        }
     }
-    else if(valid_count!=0){
-         // Choose a cell based on the criteria
-        int chosen_index = (N_GEN + x + y) % valid_count;
-        int new_x = valid_cells[chosen_index][0];
-        int new_y = valid_cells[chosen_index][1];
-    }
-    else{
-        return;
-    }
-    
 }
 
 
-void simulate_generation() {
+void apply_moves() {
     char temp_ecosystem[MAX_ROWS][MAX_COLS][MAX_STR_SIZE];
     memcpy(temp_ecosystem, ecosystem, sizeof(ecosystem));
 
     for (int i = 0; i < num_objects; i++) {
-        // Move rabbits
-        if (objects[i].type == 'R') {
-            move_rabbit(&objects[i], temp_ecosystem);
-        }
-    }
-    for(int i=0;i<num_objects;i++){
-        // Move foxes
-        if (objects[i].type == 'F') {
-            move_fox(&objects[i], temp_ecosystem);
+        if (intended_moves[i].move_requested) {
+            Object* obj = &objects[i];
+            int old_x = obj->x;
+            int old_y = obj->y;
+            int new_x = intended_moves[i].new_x;
+            int new_y = intended_moves[i].new_y;
+
+            snprintf(temp_ecosystem[new_x][new_y], MAX_STR_SIZE, "%c%d", obj->type, obj->id);
+            snprintf(temp_ecosystem[old_x][old_y], MAX_STR_SIZE, ".");
+
+            obj->x = new_x;
+            obj->y = new_y;
+
+            // Special actions for rabbits (procreation) and foxes (hunger reset if they eat)
+            if (obj->type == 'R') {
+                obj->age++;
+                if (obj->age >= GEN_PROC_RABBITS) {
+                    obj->age = 0;
+                    // Leave a new rabbit in the old position
+                    objects[num_objects] = (Object){'R', num_objects, old_x, old_y, 0, 0};
+                    snprintf(temp_ecosystem[old_x][old_y], MAX_STR_SIZE, "R%d", num_objects);
+                    num_objects++;
+                }
+            } else if (obj->type == 'F') {
+                obj->hunger++;
+                if (ecosystem[new_x][new_y][0] == 'R') {
+                    obj->hunger = 0; // Reset hunger if fox moves to a cell with a rabbit
+                }
+                if (obj->hunger >= GEN_FOOD_FOXES) {
+                    obj->type = 'D'; // Mark fox as dead due to starvation
+                    snprintf(temp_ecosystem[new_x][new_y], MAX_STR_SIZE, ".");
+                }
+            }
         }
     }
 
-    //ADD conflict 
-/*         // Move to the selected cell
-    snprintf(temp_ecosystem[new_x][new_y], MAX_STR_SIZE, "F%d", fox->id);
-    temp_ecosystem[x][y][0] = '.'; // Clear old cell
-    fox->x = new_x;
-    fox->y = new_y; */
     memcpy(ecosystem, temp_ecosystem, sizeof(ecosystem));
 }
 
-
+void simulate_generation() {
+    collect_moves();
+    resolve_conflicts();
+    apply_moves();
+}
 
 int main(int argc, char* argv[]) {
     if (argc != 2) {
@@ -206,7 +278,7 @@ int main(int argc, char* argv[]) {
         simulate_generation();
         printf("Generation %d:\n", gen + 1);
         print_ecosystem();
-    } 
+    }
 
     return 0;
 }
