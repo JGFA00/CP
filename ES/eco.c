@@ -141,7 +141,7 @@ void print_ecosystem_compact() {
     printf("\n----------------------\n");
 }
 
-void collect_moves() {
+void collect_moves(int gen) {
     memset(intended_moves, 0, sizeof(intended_moves));
     int directions[4][2] = {{-1, 0}, {0, 1}, {1, 0}, {0, -1}}; // N, E, S, W
 
@@ -166,7 +166,7 @@ void collect_moves() {
             }
 
             if (valid_count > 0) {
-                int chosen_index = (N_GEN + x + y) % valid_count;
+                int chosen_index = (gen + x + y) % valid_count;
                 intended_moves[i].new_x = valid_cells[chosen_index][0];
                 intended_moves[i].new_y = valid_cells[chosen_index][1];
                 intended_moves[i].move_requested = true;
@@ -198,13 +198,13 @@ void collect_moves() {
 
             // Prioritize eating a rabbit if possible
             if (valid_count_eat > 0) {
-                int chosen_index = (N_GEN + x + y) % valid_count_eat;
+                int chosen_index = (gen + x + y) % valid_count_eat;
                 intended_moves[i].new_x = valid_cells_eat[chosen_index][0];
                 intended_moves[i].new_y = valid_cells_eat[chosen_index][1];
                 intended_moves[i].move_requested = true;
             } else if (valid_count > 0) {
                 // Move to an empty cell if no rabbit is found
-                int chosen_index = (N_GEN + x + y) % valid_count;
+                int chosen_index = (gen + x + y) % valid_count;
                 intended_moves[i].new_x = valid_cells[chosen_index][0];
                 intended_moves[i].new_y = valid_cells[chosen_index][1];
                 intended_moves[i].move_requested = true;
@@ -273,11 +273,18 @@ void apply_moves() {
             int old_y = obj->y;
             int new_x = intended_moves[i].new_x;
             int new_y = intended_moves[i].new_y;
+            
+            // Move the object
+            snprintf(temp_ecosystem[new_x][new_y], MAX_STR_SIZE, "%c%d", obj->type, obj->id);
+            snprintf(temp_ecosystem[old_x][old_y], MAX_STR_SIZE, ".");
+
+            obj->x = new_x;
+            obj->y = new_y;
 
             // Procreation for Rabbits
             if (obj->type == 'R') {
                 obj->age++;
-                if (obj->age >= GEN_PROC_RABBITS) {
+                if (obj->age > GEN_PROC_RABBITS) {
                     obj->age = 0;
                     printf("\n%c%d procreated\n",obj->type,obj->id);
                     objects[num_objects] = (Object){'R', num_objects, old_x, old_y, 0, 0};
@@ -289,20 +296,13 @@ void apply_moves() {
             // Procreation for Foxes
             if (obj->type == 'F') {
                 obj->age++;
-                if (obj->age >= GEN_PROC_FOXES) {
+                if (obj->age > GEN_PROC_FOXES) {
                     obj->age = 0;
                     objects[num_objects] = (Object){'F', num_objects, old_x, old_y, 0, 0};
                     snprintf(temp_ecosystem[old_x][old_y], MAX_STR_SIZE, "F%d", num_objects);
                     num_objects++;
                 }
             }
-
-            // Move the object
-            snprintf(temp_ecosystem[new_x][new_y], MAX_STR_SIZE, "%c%d", obj->type, obj->id);
-            snprintf(temp_ecosystem[old_x][old_y], MAX_STR_SIZE, ".");
-
-            obj->x = new_x;
-            obj->y = new_y;
 
             if (obj->type == 'F') {
                 obj->hunger++;
@@ -319,6 +319,7 @@ void apply_moves() {
                     snprintf(temp_ecosystem[new_x][new_y], MAX_STR_SIZE, ".");
                 }
             }
+ 
         }
     }
 
@@ -334,8 +335,8 @@ void apply_moves() {
     memcpy(ecosystem, temp_ecosystem, sizeof(ecosystem));
 }
 
-void simulate_generation() {
-    collect_moves();
+void simulate_generation(int gen) {
+    collect_moves(gen);
     resolve_conflicts();
     apply_moves();
 }
@@ -350,7 +351,7 @@ int main(int argc, char* argv[]) {
     print_ecosystem_compact();
 
     for (int gen = 0; gen < N_GEN; gen++) {
-        simulate_generation();
+        simulate_generation(gen);
         printf("Generation %d:\n", gen + 1);
         print_ecosystem_compact();
     }
