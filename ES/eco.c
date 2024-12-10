@@ -141,6 +141,29 @@ void print_ecosystem_compact() {
     printf("\n----------------------\n");
 }
 
+void print_intended_moves() {
+    printf("Intended Moves:\n");
+    for (int i = 0; i < num_objects; i++) {
+        if (intended_moves[i].move_requested) {
+            printf("Object %c%d  at (%d, %d) -> (%d, %d)\n",                    
+                   objects[i].type, 
+                   objects[i].id, 
+                   objects[i].x, 
+                   objects[i].y, 
+                   intended_moves[i].new_x, 
+                   intended_moves[i].new_y);
+        } else {
+            printf("Object %c%d  at (%d, %d) has no move.\n", 
+                   objects[i].type, 
+                   objects[i].id,                 
+                   objects[i].x, 
+                   objects[i].y);
+        }
+    }
+    printf("\n");
+}
+
+
 void collect_moves() {
     memset(intended_moves, 0, sizeof(intended_moves));
     int directions[4][2] = {{-1, 0}, {0, 1}, {1, 0}, {0, -1}}; // N, E, S, W
@@ -163,6 +186,7 @@ void collect_moves() {
                     valid_cells[valid_count][1] = new_y;
                     valid_count++;
                 }
+                printf("Rabbit at (%d, %d): Valid move to (%d, %d)\n", x, y, new_x, new_y);
             }
 
             if (valid_count > 0) {
@@ -170,7 +194,11 @@ void collect_moves() {
                 intended_moves[i].new_x = valid_cells[chosen_index][0];
                 intended_moves[i].new_y = valid_cells[chosen_index][1];
                 intended_moves[i].move_requested = true;
+                // Print the chosen move
+                printf("Rabbit at (%d, %d): Chosen move to (%d, %d)\n",
+               x, y, valid_cells[chosen_index][0], valid_cells[chosen_index][1]);
             }
+            
 
         } else if (obj->type == 'F') {
             // Fox movement: First look for rabbits, then look for empty cells
@@ -296,11 +324,7 @@ void apply_moves() {
                     num_objects++;
                 }
             }
-
-            // Move the object
-            snprintf(temp_ecosystem[new_x][new_y], MAX_STR_SIZE, "%c%d", obj->type, obj->id);
-            snprintf(temp_ecosystem[old_x][old_y], MAX_STR_SIZE, ".");
-
+                        
             obj->x = new_x;
             obj->y = new_y;
 
@@ -319,6 +343,10 @@ void apply_moves() {
                     snprintf(temp_ecosystem[new_x][new_y], MAX_STR_SIZE, ".");
                 }
             }
+            // Move the object
+            snprintf(temp_ecosystem[new_x][new_y], MAX_STR_SIZE, "%c%d", obj->type, obj->id);
+            snprintf(temp_ecosystem[old_x][old_y], MAX_STR_SIZE, ".");
+
         }
     }
 
@@ -336,6 +364,7 @@ void apply_moves() {
 
 void simulate_generation() {
     collect_moves();
+    //print_intended_moves();
     resolve_conflicts();
     apply_moves();
 }
@@ -349,7 +378,7 @@ int main(int argc, char* argv[]) {
     read_input(argv[1]);
     print_ecosystem_compact();
 
-    for (int gen = 0; gen < N_GEN; gen++) {
+    for (int gen = 0; gen < 2; gen++) {
         simulate_generation();
         printf("Generation %d:\n", gen + 1);
         print_ecosystem_compact();
