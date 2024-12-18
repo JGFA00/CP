@@ -1,0 +1,15 @@
+Normal 
+
+5x5   0.142118   ran 10 times my machine
+10x10 2.0531108 ran 10 times my machine
+20x20 26.841994 ran 3 times my machine
+
+
+
+
+
+
+
+
+
+
